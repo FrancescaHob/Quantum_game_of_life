@@ -9,6 +9,8 @@ CELL_SIZE = 30          # Size of each cell in pixels for display
 GRID_SIZE = 20          # Number of cells in each row/column of the grid
 FPS = 5                 # Frames per second for automatic simulation
 MEASURE_INTERVAL = 10   # Collapse quantum amplitudes every MEASURE_INTERVAL
+SEED_AMP = 12345
+SEED_PHASE = 54321
 
 """ Each cell is represented as a complex amplitude array: [live_amplitude, dead_amplitude]. """
 LIVE = np.array([1 + 0j, 0 + 0j])  # Fully alive cell
@@ -43,32 +45,43 @@ def make_empty_grid():
     grid = np.array([[DEAD.copy() for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)], dtype=object)
     return grid
 
-def random_cell():
+def random_cell(rng_amp, rng_phase):
     """
-    Create a cell with random live amplitude and random phase.
-    
-    Parameters: 
-        none. 
-        
-    Returns: 
-        numpy.ndarray: array [live_amplitude, dead_amplitude] with random live phase. 
-    """
-    live_amplitude = random.random()
-    dead_amplitude = np.sqrt(1 - live_amplitude ** 2)
-    phase = random.uniform(0, 2 * np.pi)
-    return np.array([live_amplitude * cmath.exp(1j * phase), dead_amplitude])
-
-def make_random_grid():
-    """
-    Create a grid filled with random cells.
+    Create a cell with seeded random live amplitude and random phase.
 
     Parameters:
-        none.
+        rng_amp   : np.random.Generator for amplitude
+        rng_phase : np.random.Generator for phase
 
     Returns:
-        numpy.ndarray: GRID_SIZE x GRID_SIZE array where each element is a random cell.
+        numpy.ndarray: [live_amplitude*exp(i*phase), dead_amplitude]
     """
-    grid = np.array([[random_cell().copy() for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)], dtype=object)
+    live_amplitude = rng_amp.random()
+    dead_amplitude = np.sqrt(1 - live_amplitude ** 2)
+    phase = rng_phase.uniform(0, 2 * np.pi)
+    return np.array([live_amplitude * cmath.exp(1j * phase), dead_amplitude])
+
+
+def make_random_grid(seed_amp, seed_phase):
+    """
+    Create a grid filled with random cells using two seeds.
+
+    Parameters:
+        seed_amp   : int, seed for amplitude RNG
+        seed_phase : int, seed for phase RNG
+        grid_size  : int, side length of the grid
+
+    Returns:
+        np.ndarray: grid_size x grid_size array of random cells
+    """
+    rng_amp = np.random.default_rng(seed_amp)
+    rng_phase = np.random.default_rng(seed_phase)
+
+    grid = np.array(
+        [[random_cell(rng_amp, rng_phase) for _ in range(GRID_SIZE)]
+         for _ in range(GRID_SIZE)],
+        dtype=object
+    )
     return grid
 
 def normalise_cell(cell):
@@ -328,8 +341,11 @@ def choose_grid():
     Returns:
          numpy.ndarray: initial grid with optional patterns.
     """
+
     choice = input("Choose 1 for empty grid, choose 2 for random grid: ")
-    grid = make_empty_grid() if choice == "1" else make_random_grid()
+
+    grid = make_empty_grid() if choice == "1" else make_random_grid(seed_amp=SEED_AMP,seed_phase=SEED_PHASE)
+
     keys = {"1": "blinker", "2": "block", "3": "glider", "4": "line", "5": "string", "6": "phase_test"}
     while True:
         key = input("Choose pattern 1 (blinker), 2 (block), 3 (glider), 4 (line), 5 (string), 6 (phase test) or "
