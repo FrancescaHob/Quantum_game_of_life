@@ -187,22 +187,27 @@ def update_grid(grid):
                         dtype=object)
     return new_grid
 
-def measurement(grid):
+def measurement(grid, measurement_density=0.0):
     """
-    Mathematica equivalent: TakeMeasurement[universe]
-    Collapses the quantum probabilities of all states to classical states, making each cell either [1, 0] or [0, 1].
-
+    Collapses quantum probabilities on only a fraction of the grid cells.
     Parameters:
         grid (numpy.ndarray): current grid.
-
+        density (float): fraction of cells to measure, between 0 and 1.
     Returns:
-        numpy.ndarray: grid where each cell is fully alive or fully dead.
+        numpy.ndarray: grid where each cell is either the same superposition
+                       (if not measured) or collapsed to classical [1,0]/[0,1].
     """
     new_grid = np.empty((GRID_SIZE, GRID_SIZE), dtype=object)
     for i in range(GRID_SIZE):
         for j in range(GRID_SIZE):
-            prob_alive = abs(grid[i][j][0]) ** 2
-            new_grid[i][j] = np.array(LIVE.copy()) if random.random() < prob_alive else DEAD.copy()
+            if random.random() < measurement_density:
+                # Perform measurement
+                prob_alive = abs(grid[i][j][0]) ** 2
+                print("Hoi!",grid[i][j])
+                new_grid[i][j] = np.array(LIVE.copy()*cmath.phase(grid[i][j][0])) if random.random() < prob_alive else (DEAD.copy()*cmath.phase(grid[i][j][1]))
+            else:
+                # Leave unmeasured (carry over state)
+                new_grid[i][j] = grid[i][j].copy()
     return new_grid
 
 def insert_pattern(grid, x, y, pattern_name):
