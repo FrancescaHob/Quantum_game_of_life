@@ -1,3 +1,4 @@
+import math
 import pygame
 import numpy as np
 import cmath
@@ -157,7 +158,9 @@ def compute_cell(grid, x, y):
     cell = grid[x][y]
     neighbours = count_neighbours(grid, x, y)
     A = abs(neighbours)
+    #((potential(x,y))*2*np.pi) unused, unsure if works
     phi = cmath.phase(neighbours) if neighbours !=0 else 0
+
     new_cell = np.array([0 + 0j, 0 + 0j]) # Initialize new cell as complex zero array
     # Apply the semi-quantum rules from the paper
     if A <=1 or A >= 4:
@@ -169,6 +172,18 @@ def compute_cell(grid, x, y):
     elif 3 < A < 4:
         new_cell = (np.sqrt(2) + 1) * (A - 3) * death(cell, phi) + (4 - A) * birth(cell, phi)
     return normalise_cell(new_cell)
+
+def potential(x,y,grid_size=GRID_SIZE):
+    """
+    Build a potential field over the grid in [0,1].
+    
+    Parameters:
+        grid_size (int): number of grid points.
+    Returns:
+        np.ndarray: grid_size x grid_size array of potentials.
+    """
+    pot = (x + y) / (2*(grid_size-1))
+    return pot
 
 def update_grid(grid):
     """
@@ -182,12 +197,19 @@ def update_grid(grid):
     Returns:
         numpy.ndarray: new grid after one generation.
     """
+    
     old_grid = [[cell.copy() for cell in row] for row in grid] # Deep copy to avoid in-pace changes
     new_grid = np.array([[compute_cell(old_grid, i, j) for j in range(GRID_SIZE)] for i in range(GRID_SIZE)],
                         dtype=object)
     return new_grid
 
-def measurement(grid, measurement_density=0.0):
+
+
+
+            
+            
+    
+def measurement(grid, measurement_density=0.9):
     """
     Collapses quantum probabilities on only a fraction of the grid cells.
     Parameters:
@@ -203,8 +225,9 @@ def measurement(grid, measurement_density=0.0):
             if random.random() < measurement_density:
                 # Perform measurement
                 prob_alive = abs(grid[i][j][0]) ** 2
-                print("Hoi!",grid[i][j])
-                new_grid[i][j] = np.array(LIVE.copy()*cmath.phase(grid[i][j][0])) if random.random() < prob_alive else (DEAD.copy()*cmath.phase(grid[i][j][1]))
+                phase_alive = np.exp(1j * cmath.phase(grid[i][j][0]))
+                phase_dead  = np.exp(1j * cmath.phase(grid[i][j][1]))
+                new_grid[i][j] = np.array(LIVE.copy()*phase_alive if random.random() < prob_alive else DEAD.copy()*phase_dead)
             else:
                 # Leave unmeasured (carry over state)
                 new_grid[i][j] = grid[i][j].copy()
