@@ -1,2 +1,7 @@
 numpy
+pandas
+pyarrow
 pygame
+matplotlib
+dash
+plotly
