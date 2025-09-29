@@ -5,12 +5,17 @@ import cmath
 import random
 import copy
 
-CELL_SIZE = 30          # Size of each cell in pixels for display
-GRID_SIZE = 20          # Number of cells in each row/column of the grid
+# CELL_SIZE = 30          # Size of each cell in pixels for display
+GRID_SIZE = 40          # Number of cells in each row/column of the grid
+CELL_SIZE = max(1, int(600 // GRID_SIZE))  # Adjust CELL_SIZE to fit in 800x800 window
 FPS = 5                 # Frames per second for automatic simulation
 MEASURE_INTERVAL = 10   # Collapse quantum amplitudes every MEASURE_INTERVAL
+MEASURE_DENSITY = 0.9  # Fraction of cells to measure during measurement
 SEED_AMP = 12345
 SEED_PHASE = 54321
+P_DEAD = 0.0              # Probability of a cell being DEAD in random grid
+ONLY_DRAW_LIVE = True    # Only draw phase arrows for cells with live amplitude > 0
+
 
 """ Each cell is represented as a complex amplitude array: [live_amplitude, dead_amplitude]. """
 LIVE = np.array([1 + 0j, 0 + 0j])  # Fully alive cell
@@ -31,7 +36,7 @@ PATTERNS = {
     (0, 4, np.array([LIVE.copy()[0] * cmath.exp(1j * cmath.pi), LIVE.copy()[1]]))]
 }
 
-def make_empty_grid():
+def make_empty_grid(grid_size: int = GRID_SIZE):
     """
     Mathematica equivalent: MakeUni[n]
     Create an empty grid filled with dead cells. Each cell is a separate object to avoid shared references.
@@ -42,27 +47,37 @@ def make_empty_grid():
     Returns:
         numpy.ndarray: GRID_SIZE x GRID_SIZE array where each element is a copy of DEAD cell.
     """
-    grid = np.array([[DEAD.copy() for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)], dtype=object)
+    grid = np.array([[DEAD.copy() for _ in range(grid_size)] for _ in range(grid_size)], dtype=object)
     return grid
 
-def random_cell(rng_amp, rng_phase):
+def random_cell(rng_amp, rng_phase, p_dead=P_DEAD):
     """
     Create a cell with seeded random live amplitude and random phase.
 
     Parameters:
         rng_amp   : np.random.Generator for amplitude
         rng_phase : np.random.Generator for phase
+        p_dead    : float, probability of the cell being dead (0 to 1)
 
     Returns:
         numpy.ndarray: [live_amplitude*exp(i*phase), dead_amplitude]
     """
-    live_amplitude = rng_amp.random()
-    dead_amplitude = np.sqrt(1 - live_amplitude ** 2)
+
+    if rng_amp.random() < p_dead:
+        return DEAD.copy()
+
+    # changed below to ensure uniform distribution of probability
+    # live_amplitude = rng_amp.random()
+    # dead_amplitude = np.sqrt(1 - live_amplitude ** 2)
+
+    p_live = rng_amp.random()
+    live_amplitude = np.sqrt(p_live)
+    dead_amplitude = np.sqrt(1.0 - p_live)
     phase = rng_phase.uniform(0, 2 * np.pi)
     return np.array([live_amplitude * cmath.exp(1j * phase), dead_amplitude])
 
 
-def make_random_grid(seed_amp, seed_phase):
+def make_random_grid(seed_amp, seed_phase, p_dead=P_DEAD, grid_size: int = GRID_SIZE):
     """
     Create a grid filled with random cells using two seeds.
 
@@ -70,6 +85,7 @@ def make_random_grid(seed_amp, seed_phase):
         seed_amp   : int, seed for amplitude RNG
         seed_phase : int, seed for phase RNG
         grid_size  : int, side length of the grid
+        p_dead     : float, probability of the cell being dead (0 to 1)
 
     Returns:
         np.ndarray: grid_size x grid_size array of random cells
@@ -78,8 +94,8 @@ def make_random_grid(seed_amp, seed_phase):
     rng_phase = np.random.default_rng(seed_phase)
 
     grid = np.array(
-        [[random_cell(rng_amp, rng_phase) for _ in range(GRID_SIZE)]
-         for _ in range(GRID_SIZE)],
+        [[random_cell(rng_amp, rng_phase, p_dead) for _ in range(grid_size)]
+         for _ in range(grid_size)],
         dtype=object
     )
     return grid
@@ -113,14 +129,15 @@ def count_neighbours(grid, x, y):
     Returns:
         complex: sum of live amplitudes of neighbours of cell at location (x, y).
     """
+    N = len(grid)
     total = 0 + 0j
     for dx in [-1, 0, 1]:
         for dy in [-1, 0, 1]:
             if dx == 0 and dy == 0:  # Cell itself is not a neighbour so skip
                 continue
             # Computes neighbour coordinates, %n implements periodic boundary conditions
-            nx = (x + dx) % GRID_SIZE
-            ny = (y + dy) % GRID_SIZE
+            nx = (x + dx) % N
+            ny = (y + dy) % N
             total += grid[nx][ny][0]  # Complex sum of the live amplitudes of the neighbours
     return total
 
@@ -211,8 +228,9 @@ def update_grid(grid):
         numpy.ndarray: new grid after one generation.
     """
     
+    N = len(grid)
     old_grid = [[cell.copy() for cell in row] for row in grid] # Deep copy to avoid in-pace changes
-    new_grid = np.array([[compute_cell(old_grid, i, j) for j in range(GRID_SIZE)] for i in range(GRID_SIZE)],
+    new_grid = np.array([[compute_cell(old_grid, i, j) for j in range(N)] for i in range(N)],
                         dtype=object)
     return new_grid
 
@@ -222,7 +240,7 @@ def update_grid(grid):
             
             
     
-def measurement(grid, measurement_density=0.9):
+def measurement(grid, measurement_density=MEASURE_DENSITY):
     """
     Collapses quantum probabilities on only a fraction of the grid cells.
     Parameters:
@@ -232,9 +250,10 @@ def measurement(grid, measurement_density=0.9):
         numpy.ndarray: grid where each cell is either the same superposition
                        (if not measured) or collapsed to classical [1,0]/[0,1].
     """
-    new_grid = np.empty((GRID_SIZE, GRID_SIZE), dtype=object)
-    for i in range(GRID_SIZE):
-        for j in range(GRID_SIZE):
+    N = len(grid)
+    new_grid = np.empty((N, N), dtype=object)
+    for i in range(N):
+        for j in range(N):
             if random.random() < measurement_density:
                 # Perform measurement
                 prob_alive = abs(grid[i][j][0]) ** 2
@@ -258,8 +277,9 @@ def insert_pattern(grid, x, y, pattern_name):
     Returns:
         numpy.ndarray: grid with the pattern inserted.
     """
+    N = len(grid)
     for dx, dy, state in PATTERNS.get(pattern_name, []):
-        px, py = (x + dx) % GRID_SIZE, (y + dy) % GRID_SIZE
+        px, py = (x + dx) % N, (y + dy) % N
         grid[px][py] = state.copy()
     return grid
 
@@ -284,7 +304,7 @@ def draw_arrow(screen, start, end, color=(0, 255, 0)):
     pygame.draw.line(screen, color, end, left, 2)
     pygame.draw.line(screen, color, end, right, 2)
 
-def display_grid(screen, grid):
+def display_grid(screen, grid, only_draw_live=ONLY_DRAW_LIVE):
     """
     Display the current grid with grayscale representing alive probabilities and arrows showing the phase of the live
     coefficient.
@@ -313,11 +333,12 @@ def display_grid(screen, grid):
         sin(phase)*length) and the arrow points in the direction of the complex phase.
     """
     screen.fill((0, 0, 0))
+    N = len(grid)
     arrow_length = CELL_SIZE * 0.3
     arrow_color = (255, 0, 0)
 
-    for i in range(GRID_SIZE):
-        for j in range(GRID_SIZE):
+    for i in range(N):
+        for j in range(N):
             cell = grid[i][j]
 
             # Draw background of the cell (grayscale based on alive probability)
@@ -330,7 +351,8 @@ def display_grid(screen, grid):
             # Draw arrow which represents the phase of the live amplitude
             cx, cy = j * CELL_SIZE + CELL_SIZE // 2, i * CELL_SIZE + CELL_SIZE // 2
             phase = cmath.phase(cell[0])
-            draw_arrow(screen, (cx, cy), (cx + arrow_length * np.cos(phase), cy - arrow_length *
+            if only_draw_live and prob_alive > 0: # Only draw arrow if live amplitude > 0
+                draw_arrow(screen, (cx, cy), (cx + arrow_length * np.cos(phase), cy - arrow_length *
                                           np.sin(phase)), arrow_color)
     pygame.display.flip()
 
@@ -383,12 +405,19 @@ def main():
         - Updating the display after each generation.
     """
     pygame.init()
-    screen = pygame.display.set_mode((GRID_SIZE * CELL_SIZE, GRID_SIZE * CELL_SIZE))
-    clock = pygame.time.Clock()
 
     # Choose initial grid and simulation mode
     grid = choose_grid()
+    N = len(grid)
+
+    
+    screen = pygame.display.set_mode((N * CELL_SIZE, N * CELL_SIZE))
+    clock = pygame.time.Clock()
+
     step_mode = choose_mode()
+
+    # Display the initial grid
+    display_grid(screen, grid)
 
     running = True
     gen_count = 0
