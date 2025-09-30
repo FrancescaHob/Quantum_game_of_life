@@ -32,6 +32,7 @@ import plotly.graph_objects as go
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "simulation_data"
 INDEX_CSV = DATA_DIR / "index.csv"
+VENV_PYTHON = BASE_DIR / ".venv/Scripts/python.exe"
 
 # ---------- Load catalog ----------
 if not INDEX_CSV.exists():
@@ -390,7 +391,7 @@ def replay_run(n, selected, rows):
     if not os.path.exists(path):
         return "Parquet not found."
     try:
-        subprocess.Popen(["python", str(BASE_DIR / "replay_run.py"), path])
+        subprocess.Popen([str(VENV_PYTHON), str(BASE_DIR / "replay_run.py"), path])
         return "Launching replay..."
     except Exception as e:
         return f"Failed to launch: {e}"
