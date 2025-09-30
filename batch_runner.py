@@ -2,7 +2,8 @@
 batch_runner.py
 Runs multiple simulations of the Quantum Game of Life with varying parameters,
 records results to Parquet files, and maintains an index CSV for easy reference.
-Includes optional live visualization using Pygame and Matplotlib.
+Uses multiprocessing for parallel execution.
+Includes optional live visualization using Pygame and Matplotlib (disabled in parallel mode).
 Stores data in a structured directory format based on parameters.
 """
 import os
@@ -11,6 +12,8 @@ import numpy as np
 import pandas as pd
 import pygame
 import matplotlib.pyplot as plt
+import itertools
+import multiprocessing as mp
 
 # from main import (
 #     GRID_SIZE, CELL_SIZE, make_random_grid, update_grid,
@@ -20,22 +23,23 @@ import matplotlib.pyplot as plt
 import main as core
 
 # ========= Fixed grid size for this batch =========
-GRID_SIZE_RUN = 20
+GRID_SIZE_RUN = 150
 TARGET_WINDOW_PX = 800  # desired total window width/height in pixels
 
 # make sure it's an integer >= 1
 core.CELL_SIZE = max(1, int(TARGET_WINDOW_PX // GRID_SIZE_RUN))
 
 # ========= Batch settings =========
-LIVE_VIEW            = True                   # Toggle live visualization (True/False) ps: triggy to close with ctrl+c if True
-P_DEAD_VALUES        = [0.1, 0.2]             # initial dead probability values to sweep (can take a list)
+LIVE_VIEW            = False                  # Toggle live visualization (True/False) ps: triggy to close with ctrl+c if True
+P_DEAD_VALUES        = [0.8, 0.6]                  # initial dead probability values to sweep (can take a list)
 SEED_AMP_RANGE       = range(12348, 12349)    # amplitude seeds (excluded, so for range(1,2) only 1)
 SEED_PHASE_RANGE     = range(54321, 54322)    # phase seeds (excluded)
-MEASURE_INTERVALS    = [5, 10]                # measurement steps (can take a list)
-MEASURE_DENSITIES    = [0.3, 0.6]             # fraction of cells measured (can take a list)
-N_RERUNS             = 1                      # repeats per parameter combo
+MEASURE_INTERVALS    = [5]                    # measurement steps (can take a list)
+MEASURE_DENSITIES    = [0.1]                  # fraction of cells measured (can take a list)
+N_RERUNS             = 4                     # repeats per parameter combo
 MAX_GENERATIONS      = 50                     # target steps per run
 FPS_CAP              = 50                     # UI refresh rate
+N_WORKERS            = None                   # Number of worker processes (None uses all CPU cores - 1)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR  = os.path.join(BASE_DIR, "simulation_data")
@@ -58,8 +62,11 @@ def get_dir_path(grid_size, p_dead_init, m_density, m_interval, seed_amp, seed_p
     )
 
 def get_next_run_id(dir_path):
+    # CRITICAL: This function must be called only in the single-threaded main process
+    # to avoid race conditions. It creates the directory and returns the next ID.
     os.makedirs(dir_path, exist_ok=True)
-    existing = [f for f in os.listdir(dir_path) if f.startswith("run")]
+    existing = [f for f in os.listdir(dir_path) if f.startswith("run") and f.endswith(".parquet")]
+    # Since run IDs are 1-indexed, the length of existing runs is the next run ID
     return len(existing) + 1
 
 # ========= Collapsed 2×2 block entropy (periodic edges) =========
@@ -235,18 +242,19 @@ def run_batch_and_record(seed_amp, seed_phase, m_interval, m_density,
 
     return pd.DataFrame.from_records(all_rows), gens_total, entropy_values
 
-# ========= Save helpers =========
+# ========= Save helpers (Modified to only save files and return index data) =========
 def save_entropy_csv(dir_path, run_id, entropy_values):
     path = os.path.join(dir_path, f"run{run_id}_entropy.csv")
     gens = np.arange(1, len(entropy_values) + 1, dtype=int)
     pd.DataFrame({"generation": gens, "entropy_bits": entropy_values}).to_csv(path, index=False)
     return path
 
-def save_parquet_and_index(df, dir_path, run_id,
+def save_parquet_and_get_index_data(df, dir_path, run_id,
                            p_dead_init, m_density, m_interval,
                            seed_amp, seed_phase, grid_size,
                            entropy_values):
-    os.makedirs(dir_path, exist_ok=True)
+    """Saves Parquet and Entropy CSV files and returns a dictionary for the index row."""
+    # Note: os.makedirs(dir_path) is now safely called in the single-threaded main function.
 
     gens_total = int(df["generation"].max())
     rows_total = len(df)
@@ -261,11 +269,11 @@ def save_parquet_and_index(df, dir_path, run_id,
     tail = np.array(entropy_values[-min(20, len(entropy_values)):]) if entropy_values else np.array([])
     tail_var = float(tail.var()) if tail.size else np.nan
 
-    index_path = os.path.join(OUT_DIR, "index.csv")
-    new_row = pd.DataFrame([{
+    # Return the dictionary to be aggregated by the main process
+    return {
         "path": parquet_path,
         "entropy_csv": entropy_csv_path,
-        "grid_size": int(grid_size),            # <— include grid_size in catalog
+        "grid_size": int(grid_size),
         "p_dead": p_dead_init,
         "meas_density": m_density,
         "meas_interval": m_interval,
@@ -276,60 +284,139 @@ def save_parquet_and_index(df, dir_path, run_id,
         "rows": rows_total,
         "final_entropy_bits": final_entropy,
         "tail_var_entropy": tail_var,
-    }])
+    }, parquet_path, gens_total, rows_total
 
-    if not os.path.exists(index_path):
-        new_row.to_csv(index_path, index=False, mode="w")
-    else:
-        new_row.to_csv(index_path, index=False, mode="a", header=False)
+# ========= Worker Function for Multiprocessing (Top-Level) =========
+def run_single_task(params):
+    """
+    Executes one simulation run using the pre-calculated unique run_id.
+    Returns data for the global index.
+    """
+    try:
+        # Unpack parameters, including the unique run_id and grid_size
+        p_dead_init, m_density, m_interval, seed_amp, seed_phase, run_id, grid_size = params
 
-    return parquet_path, gens_total, rows_total, entropy_csv_path
+        # Recalculate dir_path using the received parameters
+        dir_path = get_dir_path(grid_size, p_dead_init, m_density, m_interval, seed_amp, seed_phase)
 
-# ========= Main =========
+        print(f"Running N={grid_size}, pDead={p_dead_init}, D={m_density}, I={m_interval}, "
+              f"A={seed_amp}, P={seed_phase}, run={run_id} (batch/worker)")
+
+        # Always run batch mode when using multiprocessing
+        df, gens_total, entropy_values = run_batch_and_record(
+            seed_amp, seed_phase, m_interval, m_density, p_dead_init, run_id, grid_size
+        )
+
+        # Save files using the unique run_id and return index data
+        index_data, parquet_path, gens_total, rows_total = save_parquet_and_get_index_data(
+            df, dir_path, run_id,
+            p_dead_init, m_density, m_interval, seed_amp, seed_phase, grid_size,
+            entropy_values
+        )
+
+        # Return the index row data and path for final logging/index aggregation
+        return index_data, parquet_path, rows_total
+
+    except Exception as e:
+        # Handle errors gracefully in the worker process
+        print(f"ERROR: Task {params} failed with error: {e}")
+        return None, None, 0
+
+# ========= Main (Multiprocessing Implementation) =========
 def main():
     t0 = time.time()
-    saved_paths = []
 
-    for p_dead_init in P_DEAD_VALUES:
-        for m_density in MEASURE_DENSITIES:
-            for m_interval in MEASURE_INTERVALS:
-                for seed_amp in SEED_AMP_RANGE:
-                    for seed_phase in SEED_PHASE_RANGE:
-                        for _ in range(N_RERUNS):
-                            dir_path = get_dir_path(GRID_SIZE_RUN, p_dead_init, m_density, m_interval, seed_amp, seed_phase)
-                            run_id = get_next_run_id(dir_path)
+    # Check for live view when running in parallel (only possible with 1 worker)
+    workers = N_WORKERS if N_WORKERS is not None else mp.cpu_count() - 1
+    # if workers > 1 and LIVE_VIEW:
+    #     print(f"WARNING: LIVE_VIEW disabled. Cannot run Pygame visualization across {workers} processes.")
+    #     LIVE_VIEW = False
 
-                            print(f"Running N={GRID_SIZE_RUN}, pDead={p_dead_init}, D={m_density}, I={m_interval}, "
-                                  f"A={seed_amp}, P={seed_phase}, run={run_id} "
-                                  f"({'live' if LIVE_VIEW else 'batch'})")
+    # 1. Create the mesh of primary parameters (NO RERUNS in the mesh)
+    primary_param_mesh = itertools.product(
+        P_DEAD_VALUES,      # 1. p_dead_init
+        MEASURE_DENSITIES,  # 2. m_density
+        MEASURE_INTERVALS,  # 3. m_interval
+        SEED_AMP_RANGE,     # 4. seed_amp
+        SEED_PHASE_RANGE,   # 5. seed_phase
+    )
 
-                            if LIVE_VIEW:
-                                # Create initial grid with fixed size and run live
-                                grid0 = core.make_random_grid(seed_amp, seed_phase, p_dead=p_dead_init, grid_size=GRID_SIZE_RUN)
-                                df, gens_total, entropy_values = run_with_live_view_and_record(
-                                    grid0, m_interval, m_density,
-                                    seed_amp, seed_phase, p_dead_init, run_id
-                                )
-                            else:
-                                df, gens_total, entropy_values = run_batch_and_record(
-                                    seed_amp, seed_phase, m_interval, m_density, p_dead_init, run_id, GRID_SIZE_RUN
-                                )
+    task_list = []
 
-                            parquet_path, gens_total, rows_total, entropy_csv_path = save_parquet_and_index(
-                                df, dir_path, run_id,
-                                p_dead_init, m_density, m_interval, seed_amp, seed_phase, GRID_SIZE_RUN,
-                                entropy_values
-                            )
+    # 2. Iterate and pre-calculate unique run_ids in the single-threaded main process
+    for p_dead_init, m_density, m_interval, seed_amp, seed_phase in primary_param_mesh:
 
-                            saved_paths.append(parquet_path)
-                            print(f"  -> saved {parquet_path} (+ {os.path.basename(entropy_csv_path)}) "
-                                  f"(gens {gens_total}, rows {rows_total:,})")
+        # Calculate the base directory and create it if necessary. This prevents race conditions.
+        dir_path = get_dir_path(GRID_SIZE_RUN, p_dead_init, m_density, m_interval, seed_amp, seed_phase)
 
-    dt = time.time() - t0
-    print("\nDone.")
-    for p in saved_paths:
-        print("•", p)
-    print(f"\nTotal runs: {len(saved_paths)}, total time: {dt:.2f}s")
+        # Determine the starting run ID that accounts for existing runs in this directory
+        start_run_id = get_next_run_id(dir_path)
 
-if __name__ == "__main__":
+        for run_index in range(N_RERUNS):
+            unique_run_id = start_run_id + run_index
+
+            # Create a task tuple for each unique simulation run
+            task_list.append((
+                p_dead_init,
+                m_density,
+                m_interval,
+                seed_amp,
+                seed_phase,
+                unique_run_id, # <-- The guaranteed unique run ID
+                GRID_SIZE_RUN  # <-- Passing the global grid size
+            ))
+
+    print(f"Starting {len(task_list)} simulation tasks using {workers} worker(s)...")
+
+    results = []
+
+    if workers == 1 or LIVE_VIEW:
+        # Run sequentially if only 1 worker or LIVE_VIEW is enabled
+        print("Running in sequential mode...")
+        for params in task_list:
+            result = run_single_task(params)
+            if result:
+                results.append(result)
+    else:
+        # Run in parallel mode
+        with mp.Pool(processes=workers) as pool:
+            # Use pool.map to distribute the task list to run_single_task
+            results = pool.map(run_single_task, task_list)
+
+    # Filter out failed tasks (which returned None)
+    successful_results = [r for r in results if r is not None]
+
+    # --- Index Aggregation and Final Write ---
+
+    if successful_results:
+        # Unpack collected data
+        index_rows_data = [data for data, path, rows in successful_results]
+        saved_paths = [path for data, path, rows in successful_results]
+
+        final_index_df = pd.DataFrame.from_records(index_rows_data)
+
+        index_path = os.path.join(OUT_DIR, "index.csv")
+
+        # Write the final index file safely once
+        mode = "w"
+        header = True
+        if os.path.exists(index_path):
+            mode = "a"
+            header = False
+
+        final_index_df.to_csv(index_path, index=False, mode=mode, header=header)
+
+        dt = time.time() - t0
+        print("\nDone.")
+        for p in saved_paths:
+            print("•", p)
+        print(f"\nTotal runs: {len(successful_results)}, total time: {dt:.2f}s")
+
+    else:
+        dt = time.time() - t0
+        print(f"\nNo successful runs completed. Total time: {dt:.2f}s")
+
+
+# Ensure this block is used for multiprocessing safety on some platforms
+if __name__ == '__main__':
     main()
