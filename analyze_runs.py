@@ -1,21 +1,3 @@
-"""
-analyze_runs.py
-Interactive Dash app to explore and visualize results from multiple Quantum Game of Life simulations.
-Allows filtering runs by parameters, viewing run metadata, plotting entropy over generations,
-and displaying heatmaps of cell live probabilities.
-
-Several options for viewing the cell state:
-- Snapshot: p_live at a specific generation
-- Cumulative: average p_live from start to a specific generation
-- Windowed average: average p_live over a sliding window ending at a specific generation
-- Final cumulative: average p_live over the entire run
-Data is cached in-process for performance. Run simulations first to generate data.
-
-Click "Replay in Pygame" to launch a separate Pygame window for animated replay of the selected run.
-Click on the entropy graph to jump to a specific generation.
-"""
-
-
 import os
 import subprocess
 import numpy as np
@@ -145,6 +127,11 @@ controls = html.Div([
         html.Label("max final entropy (bits)"),
         dcc.Input(id="f-max-ent", type="number", value=None, step=0.1, style={"width":"100%"}),
     ], style={"marginTop":"8px"}),
+    # New filter: Minimum final entropy
+    html.Div([
+        html.Label("min final entropy (bits)"),
+        dcc.Input(id="f-min-ent", type="number", value=None, step=0.1, style={"width":"100%"}),
+    ], style={"marginTop":"8px"}),
 ], style={"width":"22%", "display":"inline-block", "verticalAlign":"top", "padding":"10px"})
 
 # Table
@@ -223,7 +210,11 @@ app.layout = html.Div([
 ], style={"maxWidth":"1400px", "margin":"0 auto"})
 
 # ---------- Helpers ----------
-def _apply_filters(df, gsize, pdead, mdens, mint, samp, sphase, min_gens, max_ent):
+def _apply_filters(df, gsize, pdead, mdens, mint, samp, sphase, min_gens, max_ent, min_ent):
+    """
+    Applies all filters to the DataFrame.
+    min_ent has been added to the signature.
+    """
     filt = df.copy()
     if gsize:  filt = filt[filt["grid_size"].isin(gsize)]
     if pdead:  filt = filt[filt["p_dead"].isin(pdead)]
@@ -235,6 +226,9 @@ def _apply_filters(df, gsize, pdead, mdens, mint, samp, sphase, min_gens, max_en
         filt = filt[filt["generations"] >= int(min_gens)]
     if max_ent is not None and "final_entropy_bits" in filt.columns:
         filt = filt[filt["final_entropy_bits"] <= float(max_ent)]
+    # Filter by minimum final entropy
+    if min_ent is not None and "final_entropy_bits" in filt.columns:
+        filt = filt[filt["final_entropy_bits"] >= float(min_ent)]
     return filt
 
 # ---------- Callbacks ----------
@@ -248,9 +242,10 @@ def _apply_filters(df, gsize, pdead, mdens, mint, samp, sphase, min_gens, max_en
     Input("f-sphase", "value"),
     Input("f-min-gens", "value"),
     Input("f-max-ent", "value"),
+    Input("f-min-ent", "value"),  # Added new Input
 )
-def update_table(gsize, pdead, mdens, mint, samp, sphase, min_gens, max_ent):
-    filt = _apply_filters(index, gsize, pdead, mdens, mint, samp, sphase, min_gens, max_ent)
+def update_table(gsize, pdead, mdens, mint, samp, sphase, min_gens, max_ent, min_ent):  # Added new argument
+    filt = _apply_filters(index, gsize, pdead, mdens, mint, samp, sphase, min_gens, max_ent, min_ent)  # Passed new argument
     return filt.to_dict("records")
 
 @app.callback(
