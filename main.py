@@ -13,9 +13,10 @@ MEASURE_INTERVAL = 10   # Collapse quantum amplitudes every MEASURE_INTERVAL
 MEASURE_DENSITY = 0.9  # Fraction of cells to measure during measurement
 SEED_AMP = 12345
 SEED_PHASE = 54321
+SEED_MEASUREMENT = 98765
 P_DEAD = 0.0              # Probability of a cell being DEAD in random grid
 ONLY_DRAW_LIVE = True    # Only draw phase arrows for cells with live amplitude > 0
-
+RANDOM_MEASUREMENT = True
 
 """ Each cell is represented as a complex amplitude array: [live_amplitude, dead_amplitude]. """
 LIVE = np.array([1 + 0j, 0 + 0j])  # Fully alive cell
@@ -103,7 +104,7 @@ def random_cell(rng_amp, rng_phase, p_dead=P_DEAD):
     return np.array([live_amplitude * cmath.exp(1j * phase), dead_amplitude])
 
 
-def make_random_grid(seed_amp, seed_phase, p_dead=P_DEAD, grid_size: int = GRID_SIZE):
+def make_random_grid(seed_amp = SEED_AMP, seed_phase = SEED_PHASE, p_dead=P_DEAD, grid_size: int = GRID_SIZE):
     """
     Create a grid filled with random cells using two seeds.
 
@@ -266,7 +267,7 @@ def update_grid(grid):
             
             
     
-def measurement(grid, measurement_density=MEASURE_DENSITY):
+def measurement(grid, phase_seed = SEED_PHASE, measurement_density=MEASURE_DENSITY, measurement_seed = SEED_MEASUREMENT):
     """
     Collapses quantum probabilities on only a fraction of the grid cells.
     Parameters:
@@ -276,21 +277,26 @@ def measurement(grid, measurement_density=MEASURE_DENSITY):
         numpy.ndarray: grid where each cell is either the same superposition
                        (if not measured) or collapsed to classical [1,0]/[0,1].
     """
+    rng_measurement = np.random.default_rng(measurement_seed)   # seeded RNG for determinism
+    rng_phase = np.random.default_rng(phase_seed)
     N = len(grid)
     new_grid = np.empty((N, N), dtype=object)
+
     for i in range(N):
         for j in range(N):
-            if random.random() < measurement_density:
+            if rng_measurement.random() < measurement_density:
                 # Perform measurement
                 prob_alive = abs(grid[i][j][0]) ** 2
-                phase_alive = np.exp(1j * cmath.phase(grid[i][j][0]))
-                phase_dead  = np.exp(1j * cmath.phase(grid[i][j][1]))
-                new_grid[i][j] = np.array(LIVE.copy()*phase_alive if random.random() < prob_alive else DEAD.copy()*phase_dead)
+                #reset phase to zero after measurement OR zero to 2pi random phase
+                if RANDOM_MEASUREMENT is True:
+                    random_phase = rng_phase.uniform(0, 2*np.pi) 
+                    new_grid[i][j] = np.array(LIVE.copy()*random_phase) if rng_measurement.random() < prob_alive else np.array(DEAD.copy()*random_phase)
+                else: 
+                    new_grid[i][j] = np.array(LIVE.copy() if rng_measurement.random() < prob_alive else DEAD.copy())
             else:
                 # Leave unmeasured (carry over state)
                 new_grid[i][j] = grid[i][j].copy()
     return new_grid
-
 def insert_pattern(grid, x, y, pattern_name):
     """
     Insert a predefined pattern into the grid at a specific location.
@@ -392,7 +398,7 @@ def choose_grid():
 
     choice = input("Choose 1 for empty grid, choose 2 for random grid: ")
 
-    grid = make_empty_grid() if choice == "1" else make_random_grid(seed_amp=SEED_AMP,seed_phase=SEED_PHASE)
+    grid = make_empty_grid() if choice == "1" else make_random_grid()
 
     keys = {"1": "blinker", "2": "block", "3": "glider", "4": "line", "5": "string", "6": "phase_test"}
     while True:
