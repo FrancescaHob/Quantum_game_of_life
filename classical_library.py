@@ -1,7 +1,10 @@
 import numpy as np
-
+import cmath
 LIVE = np.array([1 + 0j, 0 + 0j])   # alive
 DEAD = np.array([0 + 0j, 1 + 0j])   # dead
+
+""" Pattern dictionary which we use in combination with insert_pattern(grid, x, y, pattern_name). """
+
 PATTERNS = {
     "blinker": [(0, 0, LIVE.copy()), (0, 1, LIVE.copy()), (0, 2, LIVE.copy())],
     "block": [(0, 0, LIVE.copy()), (0, 1, LIVE.copy()), (1, 0, LIVE.copy()), (1, 1, LIVE.copy())],
@@ -9,14 +12,12 @@ PATTERNS = {
                (-2, 2, LIVE.copy())],
     "line": [(0, i, LIVE.copy()) for i in range(5)],
     "string": [(0, i, np.array([(-1) ** i, 0])) for i in range(5)],
-}
-
-PATTERN_LIBRARY = {
+    "phase_test": [(0, 0, np.array([LIVE.copy()[0] * cmath.exp(1j * 0), LIVE.copy()[1]])),
+    (0, 1, np.array([LIVE.copy()[0] * cmath.exp(1j * cmath.pi / 4), LIVE.copy()[1]])),
+    (0, 2, np.array([LIVE.copy()[0] * cmath.exp(1j * cmath.pi / 2), LIVE.copy()[1]])),
+    (0, 3, np.array([LIVE.copy()[0] * cmath.exp(1j * 3 * cmath.pi / 4), LIVE.copy()[1]])),
+    (0, 4, np.array([LIVE.copy()[0] * cmath.exp(1j * cmath.pi), LIVE.copy()[1]]))],
     # 2x2 block
-    "block": [
-        (0, 0, LIVE.copy()), (0, 1, LIVE.copy()),
-        (1, 0, LIVE.copy()), (1, 1, LIVE.copy())
-    ],
 
     # Beehive
     "beehive": [
@@ -163,15 +164,6 @@ PATTERN_LIBRARY = {
         (3, 1, LIVE.copy()), (3, 2, LIVE.copy()),
         (2, 4, LIVE.copy())
     ],
-}
-
-# Oscillators
-PATTERN_LIBRARY.update({
-
-    # Blinker (period 2, smallest oscillator)
-    "blinker": [
-        (0, 0, LIVE.copy()), (0, 1, LIVE.copy()), (0, 2, LIVE.copy())
-    ],
 
     # Toad (period 2)
     "toad": [
@@ -316,18 +308,6 @@ PATTERN_LIBRARY.update({
     ],
 
 
-
-})
-# Spaceships (small ones hard-coded, large modern ones stubbed)
-PATTERN_LIBRARY.update({
-
-    # Glider (smallest spaceship, diagonal, speed c/4)
-    "glider": [
-        (0, 1, LIVE.copy()),
-        (1, 2, LIVE.copy()),
-        (2, 0, LIVE.copy()), (2, 1, LIVE.copy()), (2, 2, LIVE.copy())
-    ],
-
     # LWSS: Lightweight spaceship (c/2 orthogonal)
     "lwss": [
         (0, 1, LIVE.copy()), (0, 4, LIVE.copy()),
@@ -374,9 +354,6 @@ PATTERN_LIBRARY.update({
         (1, 0, LIVE.copy()), (1, 1, LIVE.copy()), (1, 3, LIVE.copy()),
         (2, 2, LIVE.copy())
     ],
-})
-# Guns
-PATTERN_LIBRARY.update({
 
     # Gosper Glider Gun (first infinite growth pattern)
     "gosper_glider_gun": [
@@ -404,9 +381,6 @@ PATTERN_LIBRARY.update({
         (3, 35, LIVE.copy()), (4, 35, LIVE.copy()),
         (3, 36, LIVE.copy()), (4, 36, LIVE.copy()),
     ],
-})
-
-PATTERN_LIBRARY.update({
 
     # Schick Engine (classic small c/2 puffer, leaves debris behind)
     "schick_engine": [
@@ -424,10 +398,6 @@ PATTERN_LIBRARY.update({
         (2, 0, LIVE.copy()), (2, 3, LIVE.copy()),
         (3, 1, LIVE.copy()), (3, 2, LIVE.copy())
     ],
-})
-
-# Rakes
-PATTERN_LIBRARY.update({
 
     # -- Glider Rake (minimal seed that drifts and sprays gliders) --
     "glider_rake": [
@@ -454,4 +424,4 @@ PATTERN_LIBRARY.update({
         (3, 0, LIVE.copy()), (3, 2, LIVE.copy()), 
         (4, 1, LIVE.copy()), (4, 3, LIVE.copy()), (5, 2, LIVE.copy())
     ],
-})
+}

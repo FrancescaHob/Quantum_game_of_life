@@ -4,6 +4,7 @@ import numpy as np
 import cmath
 import random
 import copy
+from classical_library import PATTERNS
 
 #CELL_SIZE = 8       # Size of each cell in pixels for display
 GRID_SIZE = 50          # Number of cells in each row/column of the grid
@@ -22,21 +23,6 @@ RANDOM_MEASUREMENT = True
 LIVE = np.array([1 + 0j, 0 + 0j])  # Fully alive cell
 DEAD = np.array([0 + 0j, 1 + 0j])  # Fully dead cell
 
-""" Pattern dictionary which we use in combination with insert_pattern(grid, x, y, pattern_name). """
-PATTERNS = {
-    "blinker": [(0, 0, LIVE.copy()), (0, 1, LIVE.copy()), (0, 2, LIVE.copy())],
-    "block": [(0, 0, LIVE.copy()), (0, 1, LIVE.copy()), (1, 0, LIVE.copy()), (1, 1, LIVE.copy())],
-    "glider": [(0, 1, LIVE.copy()), (-1, 2, LIVE.copy()), (-2, 0, LIVE.copy()), (-2, 1, LIVE.copy()),
-               (-2, 2, LIVE.copy())],
-    "line": [(0, i, LIVE.copy()) for i in range(5)],
-    "string": [(0, i, np.array([(-1) ** i, 0])) for i in range(5)],
-    "phase_test": [(0, 0, np.array([LIVE.copy()[0] * cmath.exp(1j * 0), LIVE.copy()[1]])),
-    (0, 1, np.array([LIVE.copy()[0] * cmath.exp(1j * cmath.pi / 4), LIVE.copy()[1]])),
-    (0, 2, np.array([LIVE.copy()[0] * cmath.exp(1j * cmath.pi / 2), LIVE.copy()[1]])),
-    (0, 3, np.array([LIVE.copy()[0] * cmath.exp(1j * 3 * cmath.pi / 4), LIVE.copy()[1]])),
-    (0, 4, np.array([LIVE.copy()[0] * cmath.exp(1j * cmath.pi), LIVE.copy()[1]]))]
-}
-
 def make_empty_grid(grid_size: int = GRID_SIZE):
     """
     Mathematica equivalent: MakeUni[n]
@@ -51,8 +37,8 @@ def make_empty_grid(grid_size: int = GRID_SIZE):
     grid = np.array([[DEAD.copy() for _ in range(grid_size)] for _ in range(grid_size)], dtype=object)
     return grid
 
-def WIP_make_pattern_grid(grid_size: int = GRID_SIZE, pattern_name: str = None, x: int = None, y: int = None):
-    #WIP
+def make_patterned_grid(pattern_name: str = None, x: int = None, y: int = None):
+
     """
     Create an empty grid of DEAD cells, 
     optionally seeded with a starting pattern from PATTERNS.
@@ -64,6 +50,7 @@ def WIP_make_pattern_grid(grid_size: int = GRID_SIZE, pattern_name: str = None, 
     Returns:
         numpy.ndarray grid 
     """
+    grid_size = GRID_SIZE
     grid = np.array([[DEAD.copy() for _ in range(grid_size)] for _ in range(grid_size)], dtype=object)
     
     if pattern_name and pattern_name in PATTERNS:
@@ -383,9 +370,9 @@ def display_grid(screen, grid, only_draw_live=ONLY_DRAW_LIVE):
             # Draw arrow which represents the phase of the live amplitude
             cx, cy = j * CELL_SIZE + CELL_SIZE // 2, i * CELL_SIZE + CELL_SIZE // 2
             phase = cmath.phase(cell[0])
-            if only_draw_live and prob_alive > 0: # Only draw arrow if live amplitude > 0
-                draw_arrow(screen, (cx, cy), (cx + arrow_length * np.cos(phase), cy - arrow_length *
-                                          np.sin(phase)), arrow_color)
+            #if only_draw_live and prob_alive > 0: # Only draw arrow if live amplitude > 0
+            draw_arrow(screen, (cx, cy), (cx + arrow_length * np.cos(phase), cy - arrow_length *
+                                        np.sin(phase)), arrow_color)
     pygame.display.flip()
 
 def choose_grid():
@@ -396,24 +383,48 @@ def choose_grid():
          numpy.ndarray: initial grid with optional patterns.
     """
 
-    choice = input("Choose 1 for empty grid, choose 2 for random grid: ")
+    choice = input("Choose 1 for empty grid, choose 2 for random grid, 3 for (pre-)patterned grid: ")
+    def insert_manual_pattern():
+        keys = {"1": "blinker", "2": "block", "3": "glider", "4": "line", "5": "string", "6": "phase_test"}
+        while True:
+            key = input("Choose pattern 1 (blinker), 2 (block), 3 (glider), 4 (line), 5 (string), 6 (phase test) or "
+                        "'done': ")
+            if key.lower() == "done":
+                break
+            if key not in keys:
+                print("Invalid choice!")
+                continue
+            pattern = keys[key]
+            x = int(input(f"Row to insert {pattern} (0-{GRID_SIZE - 1}): "))
+            y = int(input(f"Column to insert {pattern} (0-{GRID_SIZE - 1}): "))
+            insert_pattern(grid, x, y, pattern)
+        
+    def insert_pattern_library():
+        while True:
+            key = input("Type the pattern name (or 'done' to finish): ").strip().lower()
+            if key == "done":
+                break
+            if key not in PATTERNS:
+                print("Invalid pattern choice!")
+                continue
+            print(f"Selected pattern: {key}")
+            return key
 
-    grid = make_empty_grid() if choice == "1" else make_random_grid()
+    match choice:
+        case "1":
+            grid = make_empty_grid()
+            insert_manual_pattern()
+        case "2":
+            grid = make_random_grid()
+            insert_manual_pattern()
+        case "3":
+            pattern_name = insert_pattern_library()
+            grid = make_patterned_grid(pattern_name)
+        case _:
+            print("Invalid choice")
 
-    keys = {"1": "blinker", "2": "block", "3": "glider", "4": "line", "5": "string", "6": "phase_test"}
-    while True:
-        key = input("Choose pattern 1 (blinker), 2 (block), 3 (glider), 4 (line), 5 (string), 6 (phase test) or "
-                    "'done': ")
-        if key.lower() == "done":
-            break
-        if key not in keys:
-            print("Invalid choice!")
-            continue
-        pattern = keys[key]
-        x = int(input(f"Row to insert {pattern} (0-{GRID_SIZE - 1}): "))
-        y = int(input(f"Column to insert {pattern} (0-{GRID_SIZE - 1}): "))
-        insert_pattern(grid, x, y, pattern)
     return grid
+ 
 
 def choose_mode():
     """
