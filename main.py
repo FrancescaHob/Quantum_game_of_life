@@ -5,9 +5,9 @@ import cmath
 import random
 import copy
 
-# CELL_SIZE = 30          # Size of each cell in pixels for display
-GRID_SIZE = 40          # Number of cells in each row/column of the grid
-CELL_SIZE = max(1, int(600 // GRID_SIZE))  # Adjust CELL_SIZE to fit in 800x800 window
+#CELL_SIZE = 8       # Size of each cell in pixels for display
+GRID_SIZE = 50          # Number of cells in each row/column of the grid
+CELL_SIZE = max(1, int(800 // GRID_SIZE))  # Adjust CELL_SIZE to fit in 800x800 window
 FPS = 5                 # Frames per second for automatic simulation
 MEASURE_INTERVAL = 10   # Collapse quantum amplitudes every MEASURE_INTERVAL
 MEASURE_DENSITY = 0.9  # Fraction of cells to measure during measurement
@@ -49,6 +49,32 @@ def make_empty_grid(grid_size: int = GRID_SIZE):
     """
     grid = np.array([[DEAD.copy() for _ in range(grid_size)] for _ in range(grid_size)], dtype=object)
     return grid
+
+def WIP_make_pattern_grid(grid_size: int = GRID_SIZE, pattern_name: str = None, x: int = None, y: int = None):
+    #WIP
+    """
+    Create an empty grid of DEAD cells, 
+    optionally seeded with a starting pattern from PATTERNS.
+
+    Parameters:
+        grid_size    : size of the square grid
+        pattern_name : optional string key into PATTERNS
+        x, y         : optional coordinates for placing the pattern (defaults to center)
+    Returns:
+        numpy.ndarray grid 
+    """
+    grid = np.array([[DEAD.copy() for _ in range(grid_size)] for _ in range(grid_size)], dtype=object)
+    
+    if pattern_name and pattern_name in PATTERNS:
+        # Default to center if no coordinates given
+        if x is None: 
+            x = grid_size // 2
+        if y is None:
+            y = grid_size // 2
+        insert_pattern(grid, x, y, pattern_name)
+
+    return grid
+
 
 def random_cell(rng_amp, rng_phase, p_dead=P_DEAD):
     """
