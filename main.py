@@ -271,15 +271,27 @@ def measurement(grid, phase_seed = SEED_PHASE, measurement_density=MEASURE_DENSI
 
     for i in range(N):
         for j in range(N):
-            if rng_measurement.random() < measurement_density:
+            random_measure = rng_measurement.random()   # random measure for deciding if measured
+            if random_measure < measurement_density:
                 # Perform measurement
                 prob_alive = abs(grid[i][j][0]) ** 2
+                collapse_random = rng_measurement.random()   # random measure deciding for collapse
+                collapse_alive = (collapse_random < prob_alive)
                 #reset phase to zero after measurement OR zero to 2pi random phase
-                if RANDOM_MEASUREMENT is True:
-                    random_phase = rng_phase.uniform(0, 2*np.pi) 
-                    new_grid[i][j] = np.array(LIVE.copy()*random_phase) if rng_measurement.random() < prob_alive else np.array(DEAD.copy()*random_phase)
+
+                if collapse_alive:
+                    if RANDOM_MEASUREMENT:
+                        random_phase = cmath.exp(1j * rng_phase.uniform(0, 2*np.pi))
+                        new_grid[i][j] = np.array([1 * random_phase, 0 + 0j])
+                    else:
+                        new_grid[i][j] = LIVE.copy()
+
                 else: 
-                    new_grid[i][j] = np.array(LIVE.copy() if rng_measurement.random() < prob_alive else DEAD.copy())
+                    if RANDOM_MEASUREMENT:
+                        random_phase = cmath.exp(1j * rng_phase.uniform(0, 2*np.pi))
+                        new_grid[i][j] = np.array([0 + 0j, 1 * random_phase])
+                    else:
+                        new_grid[i][j] = DEAD.copy()
             else:
                 # Leave unmeasured (carry over state)
                 new_grid[i][j] = grid[i][j].copy()
