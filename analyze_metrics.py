@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from analyze_runs import INDEX_CSV
 
 
-def load_run(path: str) -> np.ndarray:
+def load_run_parquet(path: str) -> np.ndarray:
     '''
     Load parquet file containing simulation data into DataFrame, then convert into 3D array where first dimension is
     generation and last two dimensions are the grid.
@@ -53,7 +53,7 @@ def simple_plot(data: np.ndarray) -> None:
     plt.show()
 
 
-def plot_data_and_average(data: np.ndarray) -> None:
+def plot_generation_data_and_average(data: np.ndarray) -> None:
     '''
     Calculate mean and std from data and plot them. Mean and std are calculated from final half of generations.
     '''
@@ -79,7 +79,7 @@ def process_index() -> pd.DataFrame:
     index = pd.read_csv(INDEX_CSV)
     simulations = []
     for _, row in index.iterrows():
-        _, mean, std = stabilised_p_live(average_p_live_per_gen(load_run(row['path'])))
+        _, mean, std = stabilised_p_live(average_p_live_per_gen(load_run_parquet(row['path'])))
         simulations.append({
             "mean": mean,
             "std": std,
@@ -90,6 +90,99 @@ def process_index() -> pd.DataFrame:
     return pd.DataFrame(simulations)
 
 
+def select_metric(data: pd.DataFrame, metrics: tuple) -> np.ndarray:
+    '''
+    `data` should contain (at least) 5 columns named "mean", "std", "p_dead", "meas_density", and "meas_interval".
+    `metrics` should be a tuple of length 3. The first value corresponds to fixing "p_dead", the second to fixing
+    "meas_density", the third to fixing "meas_interval". Precisely one of these should be None.
+
+    returns a 2D array where each row is a triple containing the parameter with `None` metrics, the mean and the std for
+    each row in `data` where the other two parameters are equal to the given metrics.
+
+    Example: running `group_metrics(data, (0.5, None, 25))` returns the rows in data where p_dead=0.5 and meas_interval=25
+    in the format [[meas_density1, mean1, std1], [meas_density2, mean2, std2], etc.].
+    '''
+    assert (l := len(metrics)) == 3, f"There are 3 parameters, but `specs` has length {l}"
+    assert (l := len([val for val in metrics if val is None])) == 1, f"Expected 1 None-value in `specs`, found {l}"
+
+    p_dead, meas_density, meas_interval = metrics
+    if p_dead is None:
+        fixed_specs = (meas_density, meas_interval)
+        values = data.get(["p_dead", "mean", "std", "meas_density", "meas_interval"]).to_numpy()
+    elif meas_density is None:
+        fixed_specs = (p_dead, meas_interval)
+        values = data.get(["meas_density", "mean", "std", "p_dead", "meas_interval"]).to_numpy()
+    else:
+        fixed_specs = (p_dead, meas_density)
+        values = data.get(["meas_interval", "mean", "std", "p_dead", "meas_density"]).to_numpy()
+    
+    return np.array([row[:-2] for row in values if tuple(row[-2:]) == fixed_specs])
+
+
+def plot_metric_alone(data: pd.DataFrame, metrics: tuple) -> None:
+    '''
+    See `select_metrics` for requirements of `metrics`.
+    '''
+    values = select_metric(data, metrics)
+
+    p_dead, meas_density, meas_interval = metrics
+    if p_dead is None:
+        xlabel = r"$p_{\text{dead}}$"
+        title = f"Initial distribution for meas_density={meas_density:.2}, meas_interval={meas_interval}"
+    elif meas_density is None:
+        xlabel = r"Measurement density"
+        title = f"Measurement density for p_dead={p_dead:.2}, meas_interval={meas_interval}"
+    else:
+        xlabel = r"Measurement interval (generations)"
+        title = f"Measurement interval for p_dead={p_dead:.02}, meas_density={meas_density:.2}"
+    
+    plt.errorbar(values[:,0], values[:,1], yerr=values[:,2], fmt="-o", capsize=3)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel("Average alive probability")
+    plt.show()
+
+
+def plot_metric_sweep(data: pd.DataFrame, primary: str, secondary: str, third_value: float) -> None:
+    '''
+    Plots average alive probability against primary for each value of secondary, where the third parameter is fixed.
+    '''
+    for sec_value in np.unique(data.get([secondary]).to_numpy()):
+        if primary == "p_dead":
+            xlabel = r"$p_{\text{dead}}$"
+            if secondary == "meas_density":
+                specs = (None, sec_value, third_value)
+                title = f"Initial distribution for meas_interval={third_value}"
+            else:
+                specs = (None, third_value, sec_value)
+                title = f"Initial distribution for meas_density={third_value:.2}"
+        elif primary == "meas_density":
+            xlabel = "Measurement density"
+            if secondary == "p_dead":
+                specs = (sec_value, None, third_value)
+                title = f"Measurement density for meas_interval={third_value}"
+            else:
+                specs = (third_value, None, sec_value)
+                title = f"Measurement density for p_dead={third_value:.2}"
+        else:
+            xlabel = "Measurement interval (generations)"
+            if secondary == "p_dead":
+                specs = (sec_value, third_value, None)
+                title = f"Measurement interval for meas_density={third_value:.2}"
+            else:
+                specs = (third_value, sec_value, None)
+                title = f"Measurement interval for p_dead={third_value:.2}"
+        values = select_metric(data, specs)
+        
+        plt.errorbar(values[:,0], values[:,1], yerr=values[:,2], fmt="-o", capsize=3, label=f"{secondary}={sec_value}")
+    
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel("Average alive probability")
+    plt.legend()
+    plt.show()
+
+
 def main():
     # index = pd.read_csv(INDEX_CSV)
     # run = load_run(index.at[0, "path"])
@@ -97,7 +190,9 @@ def main():
     # print(stabilised_p_live(data))
 
     simulations = process_index()
-    print(simulations)
+    # plot_metric_alone(simulations, (None, 0.1, 5))
+    plot_metric_sweep(simulations, "meas_density", "meas_interval", 0.6)
+    
 
 if __name__ == '__main__':
     main()
