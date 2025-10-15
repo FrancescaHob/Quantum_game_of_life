@@ -10,14 +10,14 @@ from classical_library import PATTERNS
 GRID_SIZE = 50          # Number of cells in each row/column of the grid
 CELL_SIZE = max(1, int(800 // GRID_SIZE))  # Adjust CELL_SIZE to fit in 800x800 window
 FPS = 5                 # Frames per second for automatic simulation
-MEASURE_INTERVAL = 10   # Collapse quantum amplitudes every MEASURE_INTERVAL
-MEASURE_DENSITY = 0.9  # Fraction of cells to measure during measurement
+MEASURE_INTERVAL = 1   # Collapse quantum amplitudes every MEASURE_INTERVAL
+MEASURE_DENSITY = 1  # Fraction of cells to measure during measurement
 SEED_AMP = 12345
 SEED_PHASE = 54321
 SEED_MEASUREMENT = 98765
 P_DEAD = 0.0              # Probability of a cell being DEAD in random grid
 ONLY_DRAW_LIVE = True    # Only draw phase arrows for cells with live amplitude > 0
-RANDOM_MEASUREMENT = True
+RANDOM_MEASUREMENT = False
 
 """ Each cell is represented as a complex amplitude array: [live_amplitude, dead_amplitude]. """
 LIVE = np.array([1 + 0j, 0 + 0j])  # Fully alive cell
@@ -90,8 +90,10 @@ def random_cell(rng_amp, rng_phase, p_dead=P_DEAD):
     phase = rng_phase.uniform(0, 2 * np.pi)
     return np.array([live_amplitude * cmath.exp(1j * phase), dead_amplitude])
 
-
-def make_random_grid(seed_amp = SEED_AMP, seed_phase = SEED_PHASE, p_dead=P_DEAD, grid_size: int = GRID_SIZE):
+# TODO
+# Before: make_random_grid(seed_amp = SEED_AMP, seed_phase = SEED_PHASE, p_dead=P_DEAD, grid_size: int = GRID_SIZE):
+#
+def make_random_grid(seed_amp = None, seed_phase = None, p_dead=P_DEAD, grid_size: int = GRID_SIZE):
     """
     Create a grid filled with random cells using two seeds.
 
@@ -104,6 +106,14 @@ def make_random_grid(seed_amp = SEED_AMP, seed_phase = SEED_PHASE, p_dead=P_DEAD
     Returns:
         np.ndarray: grid_size x grid_size array of random cells
     """
+
+    # TODO This should fix this function
+    if seed_amp is None:
+        seed_amp = SEED_AMP
+    if seed_phase is None:
+        seed_phase = SEED_PHASE
+
+
     rng_amp = np.random.default_rng(seed_amp)
     rng_phase = np.random.default_rng(seed_phase)
 
@@ -253,8 +263,9 @@ def update_grid(grid):
 
             
             
-    
-def measurement(grid, phase_seed = SEED_PHASE, measurement_density=MEASURE_DENSITY, measurement_seed = SEED_MEASUREMENT):
+# TODO the seeds need to be fixed
+
+def measurement(grid, rng_phase, rng_measurement, measurement_density=MEASURE_DENSITY):
     """
     Collapses quantum probabilities on only a fraction of the grid cells.
     Parameters:
@@ -264,8 +275,8 @@ def measurement(grid, phase_seed = SEED_PHASE, measurement_density=MEASURE_DENSI
         numpy.ndarray: grid where each cell is either the same superposition
                        (if not measured) or collapsed to classical [1,0]/[0,1].
     """
-    rng_measurement = np.random.default_rng(measurement_seed)   # seeded RNG for determinism
-    rng_phase = np.random.default_rng(phase_seed)
+    #rng_measurement = np.random.default_rng(measurement_seed)   # seeded RNG for determinism
+    #rng_phase = np.random.default_rng(phase_seed)
     N = len(grid)
     new_grid = np.empty((N, N), dtype=object)
 
@@ -422,21 +433,21 @@ def choose_grid():
             print(f"Selected pattern: {key}")
             return key
 
-    match choice:
-        case "1":
-            grid = make_empty_grid()
-            insert_manual_pattern()
-        case "2":
-            grid = make_random_grid()
-            insert_manual_pattern()
-        case "3":
-            pattern_name = insert_pattern_library()
-            grid = make_patterned_grid(pattern_name)
-        case _:
-            print("Invalid choice")
+    # TODO change to match choice, somehow couldn't update python to make it work
+    if choice == "1":
+        grid = make_empty_grid()
+        insert_manual_pattern()
+    elif choice == "2":
+        grid = make_random_grid()
+        insert_manual_pattern()
+    elif choice == "3":
+        pattern_name = insert_pattern_library()
+        grid = make_patterned_grid(pattern_name)
+    else:
+        print("Invalid choice")
+        grid = make_empty_grid()
 
     return grid
- 
 
 def choose_mode():
     """
@@ -470,6 +481,8 @@ def main():
     clock = pygame.time.Clock()
 
     step_mode = choose_mode()
+    rng_phase = np.random.default_rng(SEED_PHASE)
+    rng_measurement = np.random.default_rng(SEED_MEASUREMENT)
 
     # Display the initial grid
     display_grid(screen, grid)
@@ -499,7 +512,7 @@ def main():
 
         # Periodic measurement
         if gen_count % MEASURE_INTERVAL == 0 and gen_count > 0:
-            grid = measurement(grid)
+            grid = measurement(grid, rng_phase, rng_measurement)
 
         clock.tick(FPS)
     pygame.quit()
