@@ -1,4 +1,5 @@
-from git_main import make_random_grid, update_grid, measurement
+import os
+from main import SEED_MEASUREMENT, SEED_PHASE, make_random_grid, update_grid, measurement
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -6,7 +7,8 @@ import time
 import random
 
 generations = 50
-
+rng_phase = np.random.default_rng(SEED_PHASE)
+rng_measurement = np.random.default_rng(SEED_MEASUREMENT)
 
 def run_batch(p_deads, measurement_intervals, measurement_densities, random_measurements):
     grid_size = 50
@@ -74,10 +76,8 @@ def run_simulation(seed_amplitude, seed_phase, seed_measurement,
         if measure_interval > 0 and gen > 0 and (gen % measure_interval == 0):
             grid = measurement(
                 grid,
-                seed_phase,
-                measurement_density,
-                seed_measurement,
-                random_measurement
+                rng_phase=rng_phase,
+                rng_measurement=rng_measurement               
             )
 
         # get live amplitudes and compute mean
@@ -100,11 +100,10 @@ def run_simulation(seed_amplitude, seed_phase, seed_measurement,
     # save to csv
     csv_name = (
         f"results/data/"
-        f"gridSize_{grid_size}_"
-        f"mRandom_{random_measurement}_"
+        f"mRand_{random_measurement}_"
         f"pDead_{p_dead}_"
-        f"mInterval_{measure_interval}_"
-        f"mDensity_{measurement_density}_"
+        f"mInt_{measure_interval}_"
+        f"mDens_{measurement_density}_"
         f"ampSeed_{seed_amplitude}_"
         f"phaseSeed_{seed_phase}_"
         f"mSeed_{seed_measurement}_"
@@ -112,6 +111,8 @@ def run_simulation(seed_amplitude, seed_phase, seed_measurement,
         f"run_{run}"
         f".csv"
     )
+    os.makedirs("results/data", exist_ok=True)
+    os.makedirs("results/plots", exist_ok=True)
     np.savetxt(csv_name,
     np.array(results, dtype=float),
     delimiter=",",
