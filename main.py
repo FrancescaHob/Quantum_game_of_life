@@ -9,15 +9,15 @@ from classical_library import PATTERNS
 #CELL_SIZE = 8       # Size of each cell in pixels for display
 GRID_SIZE = 50          # Number of cells in each row/column of the grid
 CELL_SIZE = max(1, int(800 // GRID_SIZE))  # Adjust CELL_SIZE to fit in 800x800 window
-FPS = 5                 # Frames per second for automatic simulation
-MEASURE_INTERVAL = 1   # Collapse quantum amplitudes every MEASURE_INTERVAL
-MEASURE_DENSITY = 1  # Fraction of cells to measure during measurement
-SEED_AMP = 12345
-SEED_PHASE = 54321
-SEED_MEASUREMENT = 98765
-P_DEAD = 0.0              # Probability of a cell being DEAD in random grid
+FPS = 15                 # Frames per second for automatic simulation
+MEASURE_INTERVAL = 2   # Collapse quantum amplitudes every MEASURE_INTERVAL
+MEASURE_DENSITY = 0.9  # Fraction of cells to measure during measurement
+SEED_AMP = 9292
+SEED_PHASE = 920213
+SEED_MEASUREMENT = 331295
+P_DEAD = 0.4              # Probability of a cell being DEAD in random grid
 ONLY_DRAW_LIVE = True    # Only draw phase arrows for cells with live amplitude > 0
-RANDOM_MEASUREMENT = False
+RANDOM_MEASUREMENT = True
 
 """ Each cell is represented as a complex amplitude array: [live_amplitude, dead_amplitude]. """
 LIVE = np.array([1 + 0j, 0 + 0j])  # Fully alive cell
@@ -265,7 +265,7 @@ def update_grid(grid):
             
 # TODO the seeds need to be fixed
 
-def measurement(grid, rng_phase, rng_measurement, measurement_density=MEASURE_DENSITY):
+def measurement(grid, rng_phase, rng_measurement, measurement_density=MEASURE_DENSITY, random_phase_upon_measurement = RANDOM_MEASUREMENT):
     """
     Collapses quantum probabilities on only a fraction of the grid cells.
     Parameters:
@@ -279,7 +279,6 @@ def measurement(grid, rng_phase, rng_measurement, measurement_density=MEASURE_DE
     #rng_phase = np.random.default_rng(phase_seed)
     N = len(grid)
     new_grid = np.empty((N, N), dtype=object)
-
     for i in range(N):
         for j in range(N):
             random_measure = rng_measurement.random()   # random measure for deciding if measured
@@ -291,14 +290,14 @@ def measurement(grid, rng_phase, rng_measurement, measurement_density=MEASURE_DE
                 #reset phase to zero after measurement OR zero to 2pi random phase
 
                 if collapse_alive:
-                    if RANDOM_MEASUREMENT:
+                    if random_phase_upon_measurement:
                         random_phase = cmath.exp(1j * rng_phase.uniform(0, 2*np.pi))
                         new_grid[i][j] = np.array([1 * random_phase, 0 + 0j])
                     else:
                         new_grid[i][j] = LIVE.copy()
 
                 else: 
-                    if RANDOM_MEASUREMENT:
+                    if random_phase_upon_measurement:
                         random_phase = cmath.exp(1j * rng_phase.uniform(0, 2*np.pi))
                         new_grid[i][j] = np.array([0 + 0j, 1 * random_phase])
                     else:

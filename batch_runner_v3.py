@@ -17,8 +17,6 @@ There are four plots created for every simulation:
  - plot_life_probability_with_amp_difference
     adds the amplitude difference of plot_mean_amplitudes to plot_life_probability
 """
-
-
 from main import make_random_grid, update_grid, measurement
 import numpy as np
 import pandas as pd
@@ -26,10 +24,16 @@ import matplotlib.pyplot as plt
 import time
 import random
 import os
+import itertools
+import multiprocessing as mp
 
 
 generations = 2500
-max_reruns = 25
+max_reruns = 1
+number_of_workers = None # If None, will use all-1
+rerun_until_alive = False
+    # if True only reruns parameter combination if it died,
+    # if False reruns each combination max_reruns number of times
 
 def check_directories():
     sub_directories = [
@@ -48,42 +52,55 @@ def check_directories():
     for sub in sub_directories:
         os.makedirs(sub, exist_ok=True)
 
-def run_batch(p_deads, measurement_intervals, measurement_densities, random_measurements):
+def run_batch(tasks):
+
+    # set number of workers for multiprocessing
+    workers = number_of_workers if number_of_workers is not None else mp.cpu_count() - 1
+
+    with mp.Pool(processes=workers) as pool:
+        # Use pool.map to distribute the task list to run_single_task
+        pool.map(run_single_task, tasks)
+
+def run_single_task(task):
     grid_size = 50
-    for random_measurement in random_measurements:
-        for p_dead in p_deads:
-            for measurement_interval in measurement_intervals:
-                for measurement_density in measurement_densities:
-                    run = 1
+    p_dead, measurement_interval, measurement_density, random_measurement = task
+    run = 1
+    while True:
+        # generate new random seeds
+        seed_amplitude = random.randint(1, 999999)
+        seed_phase = random.randint(1, 999999)
+        seed_measurement = random.randint(1, 999999)
 
-                    while True:
-                        # generate new random seeds
-                        seed_amplitude = random.randint(1, 999999)
-                        seed_phase = random.randint(1, 999999)
-                        seed_measurement = random.randint(1, 999999)
+        seed_amplitude = 1
+        seed_phase = 1
+        seed_measurement = 1
 
-                        print(f"--- Run {run} ---")
-                        print(f"Seeds: amp={seed_amplitude}, phase={seed_phase}, measure={seed_measurement}")
+        print(f"--- Run {run} ---")
+        print(f"{p_dead = }, {measurement_interval = }, {measurement_density = }")
+        print(f"Seeds: amp={seed_amplitude}, phase={seed_phase}, measure={seed_measurement}")
 
-                        # start timer
-                        start_time = time.time()
+        # start timer
+        start_time = time.time()
 
-                        # run simulation
-                        rerun = run_simulation(seed_amplitude, seed_phase, seed_measurement,
-                                               p_dead, measurement_density, grid_size,
-                                               random_measurement, measurement_interval, run)
+        # run simulation
+        rerun = run_simulation(seed_amplitude, seed_phase, seed_measurement,
+                               p_dead, measurement_density, grid_size,
+                               random_measurement, measurement_interval, run)
 
-                        # stop timer
-                        elapsed = time.time() - start_time
-                        print(f"Run {run} completed in {elapsed:.2f} seconds.")
+        # stop timer
+        elapsed = time.time() - start_time
+        print(f"Run {run} completed in {elapsed:.2f} seconds.")
 
-                        if rerun:
-                            run += 1
-                            print("Rerun requested — starting next run.\n")
-                            continue  # go back to the top (new seeds, next run)
-                        else:
-                            print("Simulation finished successfully.")
-                            break  # stop looping
+        if not rerun_until_alive:
+            rerun  = run < max_reruns
+
+        if rerun:
+            run += 1
+            print("Rerun requested — starting next run.\n")
+            continue  # go back to the top (new seeds, next run)
+        else:
+            print("Simulation finished successfully.")
+            break  # stop looping
 
 def save_to_csv(csv_name, results):
     np.savetxt(csv_name,
@@ -227,8 +244,6 @@ def plot_life_probability_with_amp_difference(csv_name, simulation_name, p_dead,
 def run_simulation(seed_amplitude, seed_phase, seed_measurement,
                    p_dead, measurement_density, grid_size,
                    random_measurement, measure_interval, run):
-    # array to store gen,mean_abs, mean_with_phase
-    results = []
 
     # build initial grid
     grid = make_random_grid(seed_amplitude, seed_phase, p_dead, grid_size)
@@ -251,9 +266,10 @@ def run_simulation(seed_amplitude, seed_phase, seed_measurement,
     dead_grid = 0
     rerun = False
 
-
     # store results
-    results.append([gen, mean_abs, mean_abs_phase, mean_abs_diff, mean_alive, mean_alive_phase])
+    result = [gen, mean_abs, mean_abs_phase, mean_abs_diff, mean_alive, mean_alive_phase]
+    results = np.zeros((generations+1, len(result)))  # not using dynamic length
+    results[0] = result
 
     while gen < generations:
         grid = update_grid(grid)
@@ -263,7 +279,8 @@ def run_simulation(seed_amplitude, seed_phase, seed_measurement,
                 grid,
                 rng_phase,
                 rng_measurement,
-                measurement_density
+                measurement_density,
+                random_phase_upon_measurement= random_measurement
             )
 
         # get live amplitudes and compute mean
@@ -277,12 +294,14 @@ def run_simulation(seed_amplitude, seed_phase, seed_measurement,
         mean_alive_phase = np.abs(np.mean(live_amplitudes))**2
         gen += 1
 
-        # store results
-        results.append([gen, mean_abs, mean_abs_phase, mean_abs_diff, mean_alive, mean_alive_phase])
+        # store results, not using dynamic length
+        result = [gen, mean_abs, mean_abs_phase, mean_abs_diff, mean_alive, mean_alive_phase]
+        results[gen] = result
 
         # breaks
         if run < max_reruns and mean_abs == 0:
             rerun = True
+            results = results[:gen+1]  # truncate length
             break
 
 
@@ -330,14 +349,19 @@ def run_simulation(seed_amplitude, seed_phase, seed_measurement,
 if __name__ == "__main__":
     check_directories()
 
-    p_deads = [0.8, 0.6, 0.4, 0.2, 0]
-    measurement_intervals = [1, 3, 10, 32, 100]
-    measurement_densities = [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
-    random_measurements = [True] # Don't change
-    run_batch(p_deads, measurement_intervals, measurement_densities, random_measurements)
+    # n = 100
+    #
+    # p_deads = [0.4] * n
+    # measurement_intervals = [3] * n
+    # measurement_densities = np.linspace(0.3, 0.4, n)
+    # random_measurements = [True] * n
 
+    p_deads = [0.4]
+    measurement_intervals = [3]
+    measurement_densities = [0.4]
+    random_measurements = [True]
 
-    # run_simulation(3555551, 11111, 11111,
-    #                0.2, 0.4, 50,
-    #                True, 1)
-    
+    tasks = list(itertools.zip_longest(p_deads, measurement_intervals, measurement_densities, random_measurements))
+
+    run_batch(tasks)
+
