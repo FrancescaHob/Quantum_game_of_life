@@ -29,7 +29,7 @@ import multiprocessing as mp
 
 
 generations = 2500
-max_reruns = 5
+max_reruns = 25
 number_of_workers = None # If None, will use all-1
 rerun_until_alive = False
     # if True only reruns parameter combination if it died,
@@ -349,18 +349,13 @@ def run_simulation(seed_amplitude, seed_phase, seed_measurement,
 if __name__ == "__main__":
     check_directories()
 
-    # n = 100
-    #
-    # p_deads = [0.4] * n
-    # measurement_intervals = [3] * n
-    # measurement_densities = np.linspace(0.3, 0.4, n)
-    # random_measurements = [True] * n
+    n = 101
+    p_deads = [0.4] * n
+    measurement_intervals = [3] * n
+    measurement_densities = np.linspace(0.3, 0.4, n)
+    random_measurements = [True] * n
 
-    p_deads = [0.4]
-    measurement_intervals = [1]
-    measurement_densities = [0.4]
-    random_measurements = [True]
-
+    # zip_longest
     tasks = list(itertools.zip_longest(p_deads, measurement_intervals, measurement_densities, random_measurements))
 
     run_batch(tasks)
