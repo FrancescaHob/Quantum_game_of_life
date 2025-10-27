@@ -6,3 +6,4 @@ matplotlib
 dash
 plotly
 scipy
+scikit-learn
