@@ -3,6 +3,8 @@
 This project is an extension of an existing **semi-quantum version of Conway’s Game of Life**, implemented in Python with `pygame` for visualization and `numpy` for calculations.  
 Each cell is represented as a quantum state with live/dead amplitudes, and evolution follows quantum rules with periodic measurements.
 
+Run main.py to use the simulation. The rest of the scripts are mainly for testing, experiments, or analysis.
+
 ## Features
 - Runs in **step-by-step mode** (press space to advance).
 - Runs in **automatic mode** (updates on its own).
