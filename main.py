@@ -6,17 +6,17 @@ import random
 import copy
 from classical_library import PATTERNS
 
-#CELL_SIZE = 8       # Size of each cell in pixels for display
-GRID_SIZE = 50          # Number of cells in each row/column of the grid
+#CELL_SIZE = 8 # Size of each cell in pixels for display
+GRID_SIZE = 50 # Number of cells in each row/column of the grid
 CELL_SIZE = max(1, int(800 // GRID_SIZE))  # Adjust CELL_SIZE to fit in 800x800 window
-FPS = 15                 # Frames per second for automatic simulation
-MEASURE_INTERVAL = 2   # Collapse quantum amplitudes every MEASURE_INTERVAL
-MEASURE_DENSITY = 0.9  # Fraction of cells to measure during measurement
+FPS = 15 # Frames per second for automatic simulation
+MEASURE_INTERVAL = 2 # Collapse quantum amplitudes every MEASURE_INTERVAL
+MEASURE_DENSITY = 0.9 # Fraction of cells to measure during measurement
 SEED_AMP = 9292
 SEED_PHASE = 920213
 SEED_MEASUREMENT = 331295
-P_DEAD = 0.4              # Probability of a cell being DEAD in random grid
-ONLY_DRAW_LIVE = True    # Only draw phase arrows for cells with live amplitude > 0
+P_DEAD = 0.4 # Probability of a cell being DEAD in random grid
+ONLY_DRAW_LIVE = True # Only draw phase arrows for cells with live amplitude > 0
 RANDOM_MEASUREMENT = True
 
 """ Each cell is represented as a complex amplitude array: [live_amplitude, dead_amplitude]. """
@@ -80,19 +80,12 @@ def random_cell(rng_amp, rng_phase, p_dead=P_DEAD):
     if rng_amp.random() < p_dead:
         return DEAD.copy()
 
-    # changed below to ensure uniform distribution of probability
-    # live_amplitude = rng_amp.random()
-    # dead_amplitude = np.sqrt(1 - live_amplitude ** 2)
-
     p_live = rng_amp.random()
     live_amplitude = np.sqrt(p_live)
     dead_amplitude = np.sqrt(1.0 - p_live)
     phase = rng_phase.uniform(0, 2 * np.pi)
     return np.array([live_amplitude * cmath.exp(1j * phase), dead_amplitude])
-
-# TODO
-# Before: make_random_grid(seed_amp = SEED_AMP, seed_phase = SEED_PHASE, p_dead=P_DEAD, grid_size: int = GRID_SIZE):
-#
+    
 def make_random_grid(seed_amp = None, seed_phase = None, p_dead=P_DEAD, grid_size: int = GRID_SIZE):
     """
     Create a grid filled with random cells using two seeds.
@@ -106,13 +99,10 @@ def make_random_grid(seed_amp = None, seed_phase = None, p_dead=P_DEAD, grid_siz
     Returns:
         np.ndarray: grid_size x grid_size array of random cells
     """
-
-    # TODO This should fix this function
     if seed_amp is None:
         seed_amp = SEED_AMP
     if seed_phase is None:
         seed_phase = SEED_PHASE
-
 
     rng_amp = np.random.default_rng(seed_amp)
     rng_phase = np.random.default_rng(seed_phase)
@@ -243,7 +233,6 @@ def update_grid(grid):
     """
     Mathematica equivalent: Next_generation[universe]
     Compute the next generation for the entire grid using the compute_cell function.
-    TODO why not use copy.deepcopy(grid)?
 
     Parameters:
         grid (numpy.ndarray): current grid.
@@ -258,13 +247,6 @@ def update_grid(grid):
                         dtype=object)
     return new_grid
 
-
-
-
-            
-            
-# TODO the seeds need to be fixed
-
 def measurement(grid, rng_phase, rng_measurement, measurement_density=MEASURE_DENSITY, random_phase_upon_measurement = RANDOM_MEASUREMENT):
     """
     Collapses quantum probabilities on only a fraction of the grid cells.
@@ -275,8 +257,7 @@ def measurement(grid, rng_phase, rng_measurement, measurement_density=MEASURE_DE
         numpy.ndarray: grid where each cell is either the same superposition
                        (if not measured) or collapsed to classical [1,0]/[0,1].
     """
-    #rng_measurement = np.random.default_rng(measurement_seed)   # seeded RNG for determinism
-    #rng_phase = np.random.default_rng(phase_seed)
+
     N = len(grid)
     new_grid = np.empty((N, N), dtype=object)
     for i in range(N):
@@ -357,7 +338,6 @@ def display_grid(screen, grid, only_draw_live=ONLY_DRAW_LIVE):
     Returns:
         none. This function does not return a value but only updates the display.
 
-    TODO check if calculations for drawing the arrows are correct
     Explanation:
         - Each cell is represented as a rectangle of size CELL_SIZE x CELL_SIZE.
         - The brightness of the rectangle corresponds to the probability of the cell being alive = |live_amplitude|^2
@@ -432,7 +412,6 @@ def choose_grid():
             print(f"Selected pattern: {key}")
             return key
 
-    # TODO change to match choice, somehow couldn't update python to make it work
     if choice == "1":
         grid = make_empty_grid()
         insert_manual_pattern()
@@ -474,7 +453,6 @@ def main():
     # Choose initial grid and simulation mode
     grid = choose_grid()
     N = len(grid)
-
     
     screen = pygame.display.set_mode((N * CELL_SIZE, N * CELL_SIZE))
     clock = pygame.time.Clock()
