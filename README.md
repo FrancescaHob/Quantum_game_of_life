@@ -64,8 +64,4 @@ Controls:
 
 You can insert multiple patterns before starting the simulation.
 
----
-
-## Preview
-
 
