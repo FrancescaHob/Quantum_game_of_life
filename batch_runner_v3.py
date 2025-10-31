@@ -67,13 +67,13 @@ def run_single_task(task):
     run = 1
     while True:
         # generate new random seeds
-        # seed_amplitude = random.randint(1, 999999)
-        # seed_phase = random.randint(1, 999999)
-        # seed_measurement = random.randint(1, 999999)
+        seed_amplitude = random.randint(1, 999999)
+        seed_phase = random.randint(1, 999999)
+        seed_measurement = random.randint(1, 999999)
 
-        seed_amplitude = 2
-        seed_phase = 2
-        seed_measurement = 2
+        # seed_amplitude = 2
+        # seed_phase = 2
+        # seed_measurement = 2
 
         print(f"--- Run {run} ---")
         print(f"{p_dead = }, {measurement_interval = }, {measurement_density = }")
